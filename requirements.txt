@@ -1,0 +1,7 @@
+# birdnet-collage-eink
+# Pi Zero e-ink display client for birdnet-collage
+
+requests>=2.32
+Pillow>=11.0
+inky>=2.1.0
+pytest>=8

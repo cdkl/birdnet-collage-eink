@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "pi-eink": {
+      "description": "Build, configure, and deploy the Pi Zero e-ink display client for birdnet-collage.",
+      "mode": "subagent"
+    }
+  },
+  "command": {
+    "deploy": {
+      "description": "rsync repo to Pi and restart systemd service.",
+      "template": "Run (requires $PI_USER and $PI_HOST set — see .env.example): rsync -az --delete --exclude __pycache__ --exclude .git --exclude '*.pyc' --exclude .pytest_cache . $PI_USER@$PI_HOST:/opt/birdnet-collage-eink/ && ssh $PI_USER@$PI_HOST 'sudo systemctl restart birdnet-eink && sleep 2 && journalctl -u birdnet-eink --no-pager -n 30'"
+    },
+    "logs": {
+      "description": "Show the last 50 lines of the Pi's service logs.",
+      "template": "Run (requires $PI_USER and $PI_HOST set): ssh $PI_USER@$PI_HOST 'journalctl -u birdnet-eink --no-pager -n 50'"
+    },
+    "status": {
+      "description": "Check if service is running on the Pi.",
+      "template": "Run (requires $PI_USER and $PI_HOST set): ssh $PI_USER@$PI_HOST 'systemctl status birdnet-eink --no-pager'"
+    },
+    "simulate": {
+      "description": "Run the app locally with the simulator driver for testing.",
+      "template": "Run: DISPLAY_DRIVER=simulator SIMULATOR_OUTDIR=/tmp/eink-sim COLLAGE_URL=http://localhost:8081 POLL_INTERVAL=60 LOOKBACK_HOURS=24 LOG_LEVEL=DEBUG python3 -m src"
+    }
+  }
+}

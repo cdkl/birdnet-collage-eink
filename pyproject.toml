@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "birdnet-collage-eink"
+version = "0.1.0"
+description = "Pi Zero e-ink display client for birdnet-collage"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.32",
+    "Pillow>=11.0",
+]
+
+[project.optional-dependencies]
+inky = ["inky>=2.1.0"]
+test = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,25 @@
+[Unit]
+Description=birdnet-collage e-ink display client
+Documentation=https://github.com/your-org/birdnet-collage-eink
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/birdnet-collage-eink
+Environment=COLLAGE_URL=http://birdnet-collage:8081
+Environment=DISPLAY_DRIVER=inky_impression
+Environment=DISPLAY_WIDTH=1600
+Environment=DISPLAY_HEIGHT=1200
+Environment=POLL_INTERVAL=300
+Environment=LOOKBACK_HOURS=24
+Environment=CACHE_DIR=/var/lib/birdnet-eink
+Environment=LOG_LEVEL=INFO
+ExecStart=%h/.virtualenvs/pimoroni/bin/python3 -m src
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
