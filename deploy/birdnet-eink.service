@@ -17,6 +17,8 @@ Environment=POLL_INTERVAL=300
 Environment=LOOKBACK_HOURS=24
 Environment=CACHE_DIR=/var/lib/birdnet-eink
 Environment=LOG_LEVEL=INFO
+Environment=FORCE_REFRESH=0
+Environment=SATURATION=0.5
 ExecStart=%h/.virtualenvs/pimoroni/bin/python3 -m src
 Restart=on-failure
 RestartSec=10

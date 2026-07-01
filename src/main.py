@@ -16,6 +16,8 @@ DISPLAY_DRIVER = os.getenv("DISPLAY_DRIVER", "simulator")
 DISPLAY_WIDTH = int(os.getenv("DISPLAY_WIDTH", "1600"))
 DISPLAY_HEIGHT = int(os.getenv("DISPLAY_HEIGHT", "1200"))
 CACHE_DIR = os.getenv("CACHE_DIR", "/var/lib/birdnet-eink")
+FORCE_REFRESH = int(os.getenv("FORCE_REFRESH", "0"))
+SATURATION = float(os.getenv("SATURATION", "0.5"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 _display = None
@@ -34,6 +36,7 @@ def _poll_loop(display, fetcher):
             width=DISPLAY_WIDTH,
             height=DISPLAY_HEIGHT,
             hours=LOOKBACK_HOURS,
+            refresh=FORCE_REFRESH,
         )
         if png is not None:
             display.show(png)
@@ -52,7 +55,7 @@ def main():
     )
 
     global _display
-    _display = create_display(DISPLAY_DRIVER)
+    _display = create_display(DISPLAY_DRIVER, saturation=SATURATION)
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -60,8 +63,8 @@ def main():
     fetcher = CollageFetcher(COLLAGE_URL, cache_dir=CACHE_DIR)
 
     log.info(
-        "Starting birdnet-collage-eink: %s → %s every %ds (lookback=%dh)",
-        COLLAGE_URL, DISPLAY_DRIVER, POLL_INTERVAL, LOOKBACK_HOURS,
+        "Starting birdnet-collage-eink: %s → %s every %ds (lookback=%dh, refresh=%d, saturation=%.2f)",
+        COLLAGE_URL, DISPLAY_DRIVER, POLL_INTERVAL, LOOKBACK_HOURS, FORCE_REFRESH, SATURATION,
     )
 
     _poll_loop(_display, fetcher)

@@ -4,7 +4,10 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
 class MockCollageHandler(BaseHTTPRequestHandler):
+    _last_path = None
+
     def do_GET(self):
+        self.__class__._last_path = self.path
         if self.path.startswith("/api/eink"):
             client_etag = self.headers.get("If-None-Match", "").strip('"')
             if client_etag == "abc123":
@@ -26,6 +29,7 @@ class MockCollageHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def mock_server():
+    MockCollageHandler._last_path = None
     server = HTTPServer(("127.0.0.1", 0), MockCollageHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -40,6 +44,23 @@ def test_fetch_200(mock_server, temp_cache):
     png, etag = fetcher.fetch()
     assert png == b"PNG_DATA"
     assert etag == "abc123"
+    assert "refresh=1" not in MockCollageHandler._last_path
+
+
+def test_fetch_refresh_off(mock_server, temp_cache):
+    from src.fetcher import CollageFetcher
+    port = mock_server.server_port
+    fetcher = CollageFetcher(f"http://127.0.0.1:{port}", cache_dir=temp_cache)
+    png, etag = fetcher.fetch(refresh=0)
+    assert "refresh" not in MockCollageHandler._last_path
+
+
+def test_fetch_refresh_on(mock_server, temp_cache):
+    from src.fetcher import CollageFetcher
+    port = mock_server.server_port
+    fetcher = CollageFetcher(f"http://127.0.0.1:{port}", cache_dir=temp_cache)
+    png, etag = fetcher.fetch(refresh=1)
+    assert "refresh=1" in MockCollageHandler._last_path
 
 
 def test_fetch_304(mock_server, temp_cache):

@@ -5,13 +5,47 @@ from .base import BaseDisplay
 
 log = logging.getLogger(__name__)
 
+_SATURATED = [
+    [57, 48, 57],
+    [255, 255, 255],
+    [58, 91, 70],
+    [61, 59, 94],
+    [156, 72, 75],
+    [208, 190, 71],
+    [177, 106, 73],
+]
+
+_DESATURATED = [
+    [0, 0, 0],
+    [255, 255, 255],
+    [0, 255, 0],
+    [0, 0, 255],
+    [255, 0, 0],
+    [255, 255, 0],
+    [255, 140, 0],
+]
+
+
+def _blend_palette(saturation):
+    palette = []
+    for i in range(7):
+        rs, gs, bs = [c * saturation for c in _SATURATED[i]]
+        rd, gd, bd = [c * (1.0 - saturation) for c in _DESATURATED[i]]
+        palette += [int(rs + rd), int(gs + gd), int(bs + bd)]
+    palette += [255, 255, 255]
+    return palette
+
 
 class InkyImpression(BaseDisplay):
-    def __init__(self, rotation=0):
+    def __init__(self, rotation=0, saturation=0.5):
         from inky.auto import auto
         self._inky = auto()
         self._inky.rotation = rotation
-        log.info("Inky Impression initialised: %s (rotation=%s)", self._inky.resolution, rotation)
+        self._saturation = saturation
+        log.info(
+            "Inky Impression initialised: %s (rotation=%s, saturation=%s)",
+            self._inky.resolution, rotation, saturation,
+        )
 
     @property
     def resolution(self):
@@ -19,8 +53,12 @@ class InkyImpression(BaseDisplay):
 
     def show(self, png_bytes):
         img = Image.open(io.BytesIO(png_bytes))
-        if img.mode not in ("P", "PA"):
-            img = img.convert("P", palette=Image.ADAPTIVE, colors=7)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        palette = _blend_palette(self._saturation)
+        pal_img = Image.new("P", (1, 1))
+        pal_img.putpalette(palette + [0, 0, 0] * 248)
+        img = img.quantize(palette=pal_img, dither=Image.Dither.NONE)
         self._inky.set_image(img)
         self._inky.set_border(self._inky.WHITE)
         self._inky.show()

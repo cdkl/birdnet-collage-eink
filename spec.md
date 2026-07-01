@@ -105,6 +105,8 @@ class BaseDisplay(abc.ABC):
 | `CACHE_DIR` | `/var/lib/birdnet-eink` | directory for `last-etag.txt` |
 | `LOG_LEVEL` | `INFO` | `DEBUG` for verbose HTTP tracing |
 | `SIMULATOR_OUTDIR` | `/tmp/eink-sim` | output directory for simulator driver |
+| `FORCE_REFRESH` | `0` | append `&refresh=1` to force regeneration on every poll |
+| `SATURATION` | `0.5` | colour saturation for 7-colour quantization (0.0–1.0) |
 
 **Constraint**: Every env var consumed by the application must appear in:
 1. `src/main.py` — Python-side default and `os.getenv()` call.
@@ -114,7 +116,7 @@ class BaseDisplay(abc.ABC):
 
 The app calls exactly one endpoint:
 
-**`GET /api/eink?w={width}&h={height}&hours={hours}`**
+**`GET /api/eink?w={width}&h={height}&hours={hours}[&refresh=1]`**
 
 | Request header | Value | When |
 |---|---|---|
@@ -159,7 +161,7 @@ inky>=2.1.0         Pimoroni Inky e-ink display driver (2.1.0+ has Spectra 13.3"
 ### Driver pipeline
 
 ```
-PNG bytes → PIL Image.open() → convert("P", palette=ADAPTIVE, colors=7)
+PNG bytes → PIL Image.open() → convert("RGB") → quantize(palette=inky_palette, dither=NONE)
 → inky.set_image() → inky.set_border(WHITE) → inky.show()
 ```
 

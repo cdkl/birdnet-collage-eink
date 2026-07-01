@@ -49,3 +49,11 @@ def test_create_display_inky_impression_not_available():
     assert "simulator" in DRIVERS
     # inky_impression may or may not be available depending on env
     # but the factory should always work for known drivers
+
+
+def test_blend_palette():
+    from src.display.inky_impression import _blend_palette
+    pal = _blend_palette(0.5)
+    assert len(pal) == 24
+    assert pal[0:3] == [28, 24, 28]
+    assert pal[3:6] == [255, 255, 255]
