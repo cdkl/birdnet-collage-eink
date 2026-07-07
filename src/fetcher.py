@@ -10,6 +10,7 @@ class CollageFetcher:
         self._etag_file = os.path.join(cache_dir, "last-etag.txt")
         self._cache_dir = cache_dir
         self._timeout = timeout
+        self.last_status_code = None
         os.makedirs(cache_dir, exist_ok=True)
 
     def _load_etag(self):
@@ -40,8 +41,10 @@ class CollageFetcher:
         log.debug("Fetching %s (etag=%s)", url, etag or "none")
         try:
             resp = requests.get(url, headers=headers, timeout=self._timeout)
+            self.last_status_code = resp.status_code
         except requests.RequestException as e:
             log.error("Fetch failed: %s", e)
+            self.last_status_code = None
             return (None, None)
 
         if resp.status_code == 304:

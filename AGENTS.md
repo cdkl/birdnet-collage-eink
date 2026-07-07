@@ -59,6 +59,7 @@ macOS/non-Pi, `InkyImpression` simply won't register in the driver factory
 | `SATURATION` | `0.5` | Blends real Inky palette with pure RGB (0.0–1.0) |
 | `FORCE_REFRESH` | `0` | Set `1` to append `&refresh=1` to every poll |
 | `CACHE_DIR` | `/var/lib/birdnet-eink` | `.env.example` uses `/tmp/birdnet-eink` (friendlier for test/dev) |
+| `DIAGNOSTICS_PORT` | `8082` | Port for built-in diagnostics HTTP server (0 to disable) |
 
 All env vars listed in `spec.md` § Configuration. Every consumed var must
 appear in both `src/main.py` (default) and `.env.example` (doc).
@@ -86,7 +87,7 @@ appear in both `src/main.py` (default) and `.env.example` (doc).
 
 ## Tests
 
-14 pytest tests across 3 files (see `spec.md` § Tests for the breakdown).
+20+ pytest tests across 4 files (see `spec.md` § Tests for the breakdown).
 
 Mocking uses a **real `http.server.HTTPServer`** in a daemon thread with
 `BaseHTTPRequestHandler` subclasses — no `unittest.mock`, `responses`, or

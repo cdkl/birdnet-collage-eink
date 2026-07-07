@@ -107,6 +107,7 @@ class BaseDisplay(abc.ABC):
 | `SIMULATOR_OUTDIR` | `/tmp/eink-sim` | output directory for simulator driver |
 | `FORCE_REFRESH` | `0` | append `&refresh=1` to force regeneration on every poll |
 | `SATURATION` | `0.5` | colour saturation for 7-colour quantization (0.0–1.0) |
+| `DIAGNOSTICS_PORT` | `8082` | port for built-in diagnostics HTTP server (0 to disable) |
 
 **Constraint**: Every env var consumed by the application must appear in:
 1. `src/main.py` — Python-side default and `os.getenv()` call.
@@ -190,13 +191,14 @@ supported by the Spectra 6 firmware.
 
 ## Tests
 
-14 pytest tests covering:
+20 pytest tests covering:
 
 | File | Tests | Scope |
 |---|---|---|
 | `test_fetcher.py` | 5 | Mock HTTP server: 200 path, 304 path, 503 error, connection timeout, ETag persistence |
-| `test_display_simulator.py` | 6 | Simulator writes PNGs to correct path, incrementing filenames, clear is no-op, resolution property, unknown driver error, driver registry |
+| `test_display_simulator.py` | 7 | Simulator writes PNGs, incrementing filenames, clear is no-op, resolution, unknown driver, driver registry, blend palette |
 | `test_main.py` | 3 | Main loop integration, signal handler, env var defaults |
+| `test_diagnostics.py` | 5 | Diagnostics JSON structure, last-image/quantized endpoints, 404, state updates |
 
 Mocking pattern: `http.server.HTTPServer` with a `BaseHTTPRequestHandler` subclass
 served in a daemon thread. No `unittest.mock` or third-party libraries required.
@@ -217,8 +219,83 @@ Run via `python3 -m pytest`. Extras needed: `pip install pytest requests Pillow`
   but fails at import (SPI GPIO unavailable). The driver factory catches
   `ImportError` gracefully — `inky_impression` is simply not registered on
   non-Pi machines.
-- **Single-threaded**: The polling loop blocks on each `time.sleep()`. Not an
-  issue for headless deployment but irrelevant for responsiveness.
+- **Single-threaded polling with diagnostics thread**: The polling loop blocks on
+  each `time.sleep()`. A daemon thread serves the diagnostics HTTP endpoint
+  concurrently. Not an issue for headless deployment.
+
+## Diagnostics endpoint
+
+A built-in HTTP server listens on `DIAGNOSTICS_PORT` and serves device status
+in a daemon thread alongside the polling loop.
+
+### Endpoints
+
+| Path | Method | Response |
+|---|---|---|
+| `/diagnostics` | GET | `200 application/json` — full device status (see schema below) |
+| `/diagnostics/last-image` | GET | `200 image/png` — last raw PNG fetched from server (or `204` if none) |
+| `/diagnostics/last-image/quantized` | GET | `200 image/png` — post-7-colour-quantization PNG (or `204` if none) |
+
+### JSON schema (`/diagnostics`)
+
+```json
+{
+  "version": "0.1.0",
+  "service": "birdnet-eink",
+  "process_start_time": "<ISO-8601>",
+  "uptime_seconds": 12345.0,
+  "display": {
+    "driver": "inky_impression",
+    "resolution": [1600, 1200],
+    "saturation": 0.5
+  },
+  "poll": {
+    "collage_url": "http://birdnet-collage:8081",
+    "poll_interval_seconds": 300,
+    "lookback_hours": 24,
+    "force_refresh": false
+  },
+  "connectivity": {
+    "collage_reachable": true,
+    "last_fetch_status": 200,
+    "last_fetch_time": "<ISO-8601>"
+  },
+  "last_image": {
+    "etag": "abc123",
+    "served_at": "<ISO-8601>",
+    "original_url": "/diagnostics/last-image",
+    "quantized_url": "/diagnostics/last-image/quantized"
+  },
+  "system": {
+    "hostname": "birdnet-pi",
+    "platform": "Linux-6.1.21-armv6l-with-glibc2.31",
+    "python_version": "3.11.2",
+    "cpu_temp_celsius": 42.5,
+    "memory_percent": 45.6,
+    "memory_total_mb": 512,
+    "memory_available_mb": 278,
+    "disk": {
+      "total_gb": 15.0,
+      "used_gb": 10.2,
+      "free_gb": 4.8,
+      "percent": 67.8
+    }
+  }
+}
+```
+
+System fields (`cpu_temp_celsius`, memory, disk) return `null` on non-Linux
+or when the corresponding `/proc`/`/sys` file is inaccessible.
+
+### Image storage
+
+Each time `display.show()` succeeds, two files are written (overwritten) to
+`CACHE_DIR`:
+
+| File | Content |
+|---|---|
+| `last-original.png` | Raw PNG bytes as received from the collage server |
+| `last-quantized.png` | PNG after 7-colour quantization (pixel-exact match to what InkyImpression pushes to hardware) |
 
 ## Repository structure
 
@@ -226,9 +303,11 @@ Run via `python3 -m pytest`. Extras needed: `pip install pytest requests Pillow`
 birdnet-collage-eink/
 ├── src/
 │   ├── __init__.py
+│   ├── __version__           # version string (0.1.0)
 │   ├── __main__.py          # python -m src entry point
-│   ├── main.py              # polling loop + signal handling
+│   ├── main.py              # polling loop + signal handling + diagnostics wiring
 │   ├── fetcher.py           # HTTP client with ETag cache
+│   ├── diagnostics.py       # DiagnosticsServer + state + system info collection
 │   └── display/
 │       ├── __init__.py      # factory: create_display(name)
 │       ├── base.py          # abstract BaseDisplay
@@ -238,7 +317,8 @@ birdnet-collage-eink/
 │   ├── conftest.py
 │   ├── test_fetcher.py
 │   ├── test_main.py
-│   └── test_display_simulator.py
+│   ├── test_display_simulator.py
+│   └── test_diagnostics.py
 ├── deploy/
 │   ├── birdnet-eink.service   # systemd unit
 │   └── install.sh             # one-shot Pi setup

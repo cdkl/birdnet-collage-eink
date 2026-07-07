@@ -38,6 +38,7 @@ def _blend_palette(saturation):
 
 class InkyImpression(BaseDisplay):
     def __init__(self, rotation=0, saturation=0.5):
+        super().__init__()
         from inky.auto import auto
         self._inky = auto()
         self._inky.rotation = rotation
@@ -63,6 +64,10 @@ class InkyImpression(BaseDisplay):
         self._inky.set_border(self._inky.WHITE)
         self._inky.show()
         log.info("Inky Impression updated (%s)", self._inky.resolution)
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        self.last_quantized_bytes = buf.getvalue()
 
     def clear(self):
         w, h = self.resolution

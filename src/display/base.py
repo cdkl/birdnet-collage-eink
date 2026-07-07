@@ -1,6 +1,9 @@
 import abc
 
 class BaseDisplay(abc.ABC):
+    def __init__(self):
+        self.last_quantized_bytes = None
+
     @property
     @abc.abstractmethod
     def resolution(self):
