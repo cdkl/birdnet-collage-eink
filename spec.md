@@ -41,8 +41,29 @@ birdnet-collage (server)        Raspberry Pi Zero (this app)
                                 │  │  BaseDisplay     │    │
                                 │  │  ├─ InkyImpression│    │
                                 │  │  └─ Simulator    │    │
-                                │  └──────────────────┘    │
-                                └──────────────────────────┘
+│  └──────────────────┘    │
+│                           │
+│  ┌──────────────┐         │
+│  │ ButtonMonitor│(daemon) │
+│  │  A=GPIO5     │         │
+│  │  B=GPIO6     │         │
+│  │  C=GPIO25    │         │
+│  │  D=GPIO24    │         │
+│  └──────┬───────┘         │
+│         │ state           │
+│         ▼                 │
+│  ┌──────────────┐         │
+│  │ Poll loop    │         │
+│  │  Event.wait()│         │
+│  └──────┬───────┘         │
+│         │                 │
+│  ┌──────▼───────────┐    │
+│  │ Display driver   │    │
+│  │  BaseDisplay     │    │
+│  │  ├─ InkyImpression│    │
+│  │  └─ Simulator    │    │
+│  └──────────────────┘    │
+└──────────────────────────┘
 ```
 
 **Stack**: Python 3.9+ → requests (HTTP) → Pillow (image processing) → inky (e-ink driver). Runs as a systemd `Type=simple` service. No web server, no frameworks.
@@ -107,6 +128,7 @@ class BaseDisplay(abc.ABC):
 | `SIMULATOR_OUTDIR` | `/tmp/eink-sim` | output directory for simulator driver |
 | `FORCE_REFRESH` | `0` | append `&refresh=1` to force regeneration on every poll |
 | `SATURATION` | `0.5` | colour saturation for 7-colour quantization (0.0–1.0) |
+| `BUTTONS_ENABLED` | `0` | enable physical button support (0=off, 1=on; requires gpiod + gpiodevice on Pi) |
 | `DIAGNOSTICS_PORT` | `8082` | port for built-in diagnostics HTTP server (0 to disable) |
 
 **Constraint**: Every env var consumed by the application must appear in:
@@ -138,10 +160,13 @@ Algorithm defined in birdnet-collage `src/collage_renderer.py:compute_etag()`.
 requests>=2.32      HTTP client
 Pillow>=11.0        Image processing (open PNG, palette conversion)
 inky>=2.1.0         Pimoroni Inky e-ink display driver (2.1.0+ has Spectra 13.3" support)
+gpiod>=2.0          Linux GPIO character device bindings (buttons, Pi only)
+gpiodevice>=0.1     Pimoroni GPIO chip discovery helper (buttons, Pi only)
 ```
 
 `inky` is an optional dependency — the simulator driver works without it.
 `inky` install does not require compilation (pure Python + bundled firmware blobs).
+`gpiod` and `gpiodevice` are optional dependencies — only needed when `BUTTONS_ENABLED=1`.
 
 ## Inky Impression 13.3" specific details
 
@@ -169,6 +194,57 @@ PNG bytes → PIL Image.open() → convert("RGB") → quantize(palette=inky_pale
 Full refresh takes ~15s on the 13.3" panel. Partial refresh is not
 supported by the Spectra 6 firmware.
 
+## Physical buttons
+
+The Inky Impression has four tactile buttons (A–D from top to bottom) connected
+to GPIO pins. They are active-low with on-board pull-up resistors, read via
+the Linux GPIO character device interface (`gpiod` + `gpiodevice`).
+
+### GPIO mapping (13.3" model)
+
+| Button | GPIO | Header pin |
+|---|---|---|
+| A (top) | 5 | PIN 29 |
+| B | 6 | PIN 31 |
+| C | 25 | PIN 37 |
+| D (bottom) | 24 | PIN 18 |
+
+### Actions
+
+| Button | Action | Effect |
+|---|---|---|
+| A | Force refresh | Immediately fetches `/api/eink?refresh=1`, bypassing ETag |
+| B | Saturation −0.1 | Decreases colour saturation (clamped 0.2–1.0), then force-refreshes |
+| C | Saturation +0.1 | Increases colour saturation (clamped 0.2–1.0), then force-refreshes |
+| D | Clear + refresh | Blanks the display to white, then force-refreshes |
+
+### Implementation
+
+- `ButtonMonitor` runs in a **daemon thread** alongside the main polling loop and
+  the diagnostics HTTP server.
+- Button events are dispatched by mutating a shared `state` dict, which is read
+  by the main loop at the top of each iteration.
+- A `threading.Event` object replaces `time.sleep()` so a button press can
+  interrupt the poll interval immediately.
+- The `ButtonMonitor._handle(label)` method is unit-testable without GPIO hardware.
+- When `BUTTONS_ENABLED=0` (the default), no threads are started and the
+  polling loop uses `time.sleep()` as before — zero overhead on macOS/simulator.
+
+### Dependencies
+
+`gpiod` (Python bindings for libgpiod) and `gpiodevice` (Pimoroni chip discovery)
+are optional — only needed when `BUTTONS_ENABLED=1` on a Pi. Install via:
+
+```
+pip install gpiod gpiodevice
+```
+
+Or with the project's optional extras:
+
+```
+pip install .[buttons]
+```
+
 ## Deployment
 
 ### One-time install (on the Pi)
@@ -186,12 +262,13 @@ supported by the Spectra 6 firmware.
 | `User`/`Group` | `$USER` (set by `deploy/install.sh` at install time) |
 | `WorkingDirectory` | `/opt/birdnet-collage-eink` |
 | `ExecStart` | `%h/.virtualenvs/pimoroni/bin/python3 -m src` (%h = home of `User`) |
+| `EnvironmentFile` | `-/opt/birdnet-collage-eink/.env` (optional, overrides hardcoded `Environment=` defaults) |
 | `Restart` | `on-failure` |
 | `RestartSec` | 10 |
 
 ## Tests
 
-20 pytest tests covering:
+27 pytest tests covering:
 
 | File | Tests | Scope |
 |---|---|---|
@@ -199,6 +276,7 @@ supported by the Spectra 6 firmware.
 | `test_display_simulator.py` | 7 | Simulator writes PNGs, incrementing filenames, clear is no-op, resolution, unknown driver, driver registry, blend palette |
 | `test_main.py` | 3 | Main loop integration, signal handler, env var defaults |
 | `test_diagnostics.py` | 5 | Diagnostics JSON structure, last-image/quantized endpoints, 404, state updates |
+| `test_buttons.py` | 7 | Button dispatch: A force-refresh, B decrement, B clamp, C increment, C clamp, D clear+refresh, floating-point drift |
 
 Mocking pattern: `http.server.HTTPServer` with a `BaseHTTPRequestHandler` subclass
 served in a daemon thread. No `unittest.mock` or third-party libraries required.
@@ -219,9 +297,10 @@ Run via `python3 -m pytest`. Extras needed: `pip install pytest requests Pillow`
   but fails at import (SPI GPIO unavailable). The driver factory catches
   `ImportError` gracefully — `inky_impression` is simply not registered on
   non-Pi machines.
-- **Single-threaded polling with diagnostics thread**: The polling loop blocks on
-  each `time.sleep()`. A daemon thread serves the diagnostics HTTP endpoint
-  concurrently. Not an issue for headless deployment.
+- **Multi-threaded polling with diagnostics and button threads**: The polling loop
+  blocks on `threading.Event.wait()`. A daemon thread serves the diagnostics HTTP
+  endpoint and, when enabled, a second daemon thread monitors physical buttons.
+  Not an issue for headless deployment.
 
 ## Diagnostics endpoint
 
@@ -247,7 +326,8 @@ in a daemon thread alongside the polling loop.
   "display": {
     "driver": "inky_impression",
     "resolution": [1600, 1200],
-    "saturation": 0.5
+    "saturation": 0.5,
+    "button_saturation": 0.5
   },
   "poll": {
     "collage_url": "http://birdnet-collage:8081",
@@ -305,8 +385,9 @@ birdnet-collage-eink/
 │   ├── __init__.py
 │   ├── __version__           # version string (0.1.0)
 │   ├── __main__.py          # python -m src entry point
-│   ├── main.py              # polling loop + signal handling + diagnostics wiring
+│   ├── main.py              # polling loop + signal handling + diagnostics wiring + buttons
 │   ├── fetcher.py           # HTTP client with ETag cache
+│   ├── buttons.py           # ButtonMonitor (gpiod-based GPIO reader, daemon thread)
 │   ├── diagnostics.py       # DiagnosticsServer + state + system info collection
 │   └── display/
 │       ├── __init__.py      # factory: create_display(name)
@@ -318,10 +399,12 @@ birdnet-collage-eink/
 │   ├── test_fetcher.py
 │   ├── test_main.py
 │   ├── test_display_simulator.py
-│   └── test_diagnostics.py
+│   ├── test_diagnostics.py
+│   └── test_buttons.py
 ├── deploy/
 │   ├── birdnet-eink.service   # systemd unit
-│   └── install.sh             # one-shot Pi setup
+│   ├── install.sh             # one-shot Pi setup
+│   └── deploy.sh              # incremental deploy (rsync + unit update + restart)
 ├── opencode.json              # /deploy, /logs, /status, /simulate commands
 ├── AGENTS.md                  # agent instructions
 ├── .env.example               # config template (committed)

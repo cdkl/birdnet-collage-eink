@@ -19,6 +19,8 @@ Environment=CACHE_DIR=/var/lib/birdnet-eink
 Environment=LOG_LEVEL=INFO
 Environment=FORCE_REFRESH=0
 Environment=SATURATION=0.5
+# .env overrides defaults above (rsynced from repo root)
+EnvironmentFile=-/opt/birdnet-collage-eink/.env
 ExecStart=%h/.virtualenvs/pimoroni/bin/python3 -m src
 Restart=on-failure
 RestartSec=10

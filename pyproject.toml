@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 inky = ["inky>=2.1.0"]
+buttons = ["gpiod>=2.0", "gpiodevice>=0.1"]
 test = ["pytest>=8"]
 
 [tool.setuptools.packages.find]

@@ -40,6 +40,8 @@ sudo chown "$USER:$USER" "$REPO_DIR"
 echo "==> Installing systemd service..."
 sudo cp "$REPO_DIR/deploy/birdnet-eink.service" /etc/systemd/system/
 sudo sed -i "s/User=pi/User=$USER/; s/Group=pi/Group=$USER/" /etc/systemd/system/birdnet-eink.service
+# Replace %h specifier with explicit home dir (systemd %h resolves inconsistently with User= changes)
+sudo sed -i "s|ExecStart=%h/.virtualenvs/pimoroni/bin/python3|ExecStart=$HOME/.virtualenvs/pimoroni/bin/python3|" /etc/systemd/system/birdnet-eink.service
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE"
 

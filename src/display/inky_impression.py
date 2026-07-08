@@ -52,11 +52,19 @@ class InkyImpression(BaseDisplay):
     def resolution(self):
         return self._inky.resolution
 
+    @property
+    def saturation(self):
+        return self._saturation
+
+    @saturation.setter
+    def saturation(self, value):
+        self._saturation = value
+
     def show(self, png_bytes):
         img = Image.open(io.BytesIO(png_bytes))
         if img.mode != "RGB":
             img = img.convert("RGB")
-        palette = _blend_palette(self._saturation)
+        palette = _blend_palette(self.saturation)
         pal_img = Image.new("P", (1, 1))
         pal_img.putpalette(palette + [0, 0, 0] * 248)
         img = img.quantize(palette=pal_img, dither=Image.Dither.NONE)

@@ -24,6 +24,7 @@ class DiagnosticsState:
     display_driver: str = ""
     display_resolution: tuple = (1600, 1200)
     display_saturation: float = 0.5
+    button_saturation: float | None = None
     collage_url: str = ""
     poll_interval: int = 300
     lookback_hours: int = 24
@@ -129,6 +130,7 @@ class DiagnosticsHandler(BaseHTTPRequestHandler):
                     "driver": st.display_driver,
                     "resolution": list(st.display_resolution),
                     "saturation": st.display_saturation,
+                    "button_saturation": st.button_saturation,
                 },
                 "poll": {
                     "collage_url": st.collage_url,

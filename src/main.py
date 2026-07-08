@@ -3,6 +3,7 @@ import sys
 import time
 import signal
 import logging
+import threading
 
 from .display import create_display
 from .fetcher import CollageFetcher
@@ -21,6 +22,7 @@ FORCE_REFRESH = int(os.getenv("FORCE_REFRESH", "0"))
 SATURATION = float(os.getenv("SATURATION", "0.5"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 DIAGNOSTICS_PORT = int(os.getenv("DIAGNOSTICS_PORT", "8082"))
+BUTTONS_ENABLED = int(os.getenv("BUTTONS_ENABLED", "0"))
 
 _display = None
 _diag_state = DiagnosticsState()
@@ -53,18 +55,34 @@ def _handle_signal(signum, frame):
     sys.exit(0)
 
 
-def _poll_loop(display, fetcher, diag_state, cache_dir):
+def _poll_loop(display, fetcher, diag_state, cache_dir, button_state=None):
     while True:
+        if button_state is not None:
+            if button_state["clear_requested"]:
+                display.clear()
+                button_state["clear_requested"] = False
+                log.info("Display cleared via button")
+
+            force = button_state["force_refresh_once"] or bool(FORCE_REFRESH)
+            if hasattr(display, "saturation"):
+                display.saturation = button_state["saturation"]
+            diag_state.button_saturation = button_state["saturation"]
+        else:
+            force = bool(FORCE_REFRESH)
+
         png, etag = fetcher.fetch(
             width=DISPLAY_WIDTH,
             height=DISPLAY_HEIGHT,
             hours=LOOKBACK_HOURS,
-            refresh=FORCE_REFRESH,
+            refresh=1 if force else 0,
         )
         now = time.time()
         diag_state.last_fetch_time = now
         diag_state.last_fetch_status = fetcher.last_status_code
         diag_state.collage_reachable = fetcher.last_status_code is not None
+
+        if button_state is not None:
+            button_state["force_refresh_once"] = False
 
         if png is not None:
             _save_diagnostic_original(png, cache_dir)
@@ -81,7 +99,11 @@ def _poll_loop(display, fetcher, diag_state, cache_dir):
         else:
             log.debug("Skipping display update (no new data)")
 
-        time.sleep(POLL_INTERVAL)
+        if button_state is not None:
+            button_state["wake_event"].wait(timeout=POLL_INTERVAL)
+            button_state["wake_event"].clear()
+        else:
+            time.sleep(POLL_INTERVAL)
 
 
 def main():
@@ -112,12 +134,29 @@ def main():
 
     fetcher = CollageFetcher(COLLAGE_URL, cache_dir=CACHE_DIR)
 
+    button_state = None
+    if BUTTONS_ENABLED:
+        button_state = {
+            "wake_event": threading.Event(),
+            "force_refresh_once": False,
+            "clear_requested": False,
+            "saturation": SATURATION,
+        }
+        try:
+            from .buttons import ButtonMonitor
+            ButtonMonitor(button_state).start()
+            log.info("Button monitor enabled")
+        except Exception as e:
+            log.warning("Button monitor failed to start: %s", e)
+            button_state = None
+
     log.info(
-        "Starting birdnet-collage-eink: %s → %s every %ds (lookback=%dh, refresh=%d, saturation=%.2f)",
-        COLLAGE_URL, DISPLAY_DRIVER, POLL_INTERVAL, LOOKBACK_HOURS, FORCE_REFRESH, SATURATION,
+        "Starting birdnet-collage-eink: %s → %s every %ds (lookback=%dh, refresh=%d, saturation=%.2f, buttons=%s)",
+        COLLAGE_URL, DISPLAY_DRIVER, POLL_INTERVAL, LOOKBACK_HOURS, FORCE_REFRESH,
+        SATURATION, "yes" if button_state else "no",
     )
 
-    _poll_loop(_display, fetcher, _diag_state, CACHE_DIR)
+    _poll_loop(_display, fetcher, _diag_state, CACHE_DIR, button_state=button_state)
 
 
 if __name__ == "__main__":

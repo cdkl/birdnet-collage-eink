@@ -89,7 +89,7 @@ def test_main_imports():
     from src.main import (
         COLLAGE_URL, POLL_INTERVAL, LOOKBACK_HOURS,
         DISPLAY_DRIVER, DISPLAY_WIDTH, DISPLAY_HEIGHT, CACHE_DIR,
-        FORCE_REFRESH, SATURATION,
+        FORCE_REFRESH, SATURATION, BUTTONS_ENABLED,
     )
     assert isinstance(COLLAGE_URL, str)
     assert isinstance(POLL_INTERVAL, int)
@@ -98,3 +98,4 @@ def test_main_imports():
     assert isinstance(DISPLAY_HEIGHT, int)
     assert isinstance(FORCE_REFRESH, int)
     assert isinstance(SATURATION, float)
+    assert isinstance(BUTTONS_ENABLED, int)

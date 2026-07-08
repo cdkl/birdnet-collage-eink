@@ -6,7 +6,7 @@ log = logging.getLogger(__name__)
 
 
 class Simulator(BaseDisplay):
-    def __init__(self, outdir="/tmp/eink-sim"):
+    def __init__(self, outdir="/tmp/eink-sim", saturation=None):
         super().__init__()
         self._outdir = outdir
         os.makedirs(outdir, exist_ok=True)
