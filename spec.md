@@ -18,7 +18,7 @@ code from that repository — only on its HTTP API contract at `/api/eink`.
 - **R4**: Persist the last known ETag to a file so the optimization survives service restart.
 - **R5**: Drive a Pimoroni Inky Impression 13.3" e-ink display (1600×1200, 7-colour Spectra 6).
 - **R6**: Support a simulator driver that writes fetched PNGs to disk (no hardware needed for development).
-- **R7**: Clean the display on graceful shutdown (SIGTERM/SIGINT).
+- **R7**: On graceful shutdown (SIGTERM/SIGINT), display `shutdown.png` from the repo root if it exists; otherwise clear the screen.
 - **R8**: Restart automatically on failure (systemd `Restart=on-failure`).
 - **R9**: All configuration via environment variables.
 - **R10**: Pure Python dependencies only — no C-extensions that aren't pre-built for armv6l.
@@ -80,7 +80,7 @@ birdnet-collage (server)        Raspberry Pi Zero (this app)
 | 7-colour Spectra 6 palette | Display supports Black, White, Red, Yellow, Blue, Green, Orange. PNG is quantized to 7 colours client-side |
 | systemd `Restart=on-failure` | Pi Zero runs headless; service must self-heal (WiFi drop, server restart, etc.) |
 | `stdout` logging → journald | Zero-config logging; no log files to rotate |
-| Graceful shutdown via signal handler | SIGTERM/SIGINT → `display.clear()` → exit. Leaves display blank instead of frozen on last frame |
+| Graceful shutdown via signal handler | SIGTERM/SIGINT → show `shutdown.png` (if present) → `display.clear()` → exit. Lets users place a custom goodbye image at the repo root. No env-var configuration needed |
 | `from inky.auto import auto` | Inky auto-detects the display from EEPROM — no manual model selection |
 | Inky driver installed into `~/.virtualenvs/pimoroni/` | Pimoroni's recommended install path; systemd `ExecStart` points to this venv's python3 |
 | SPI + I2C + `dtoverlay=spi0-0cs` required | Inky Impression uses SPI for data, I2C for EEPROM detection. Chip-select overlay needed to avoid kernel conflict |
@@ -102,15 +102,35 @@ class BaseDisplay(abc.ABC):
 ### InkyImpression
 
 - Uses `inky.auto` for automatic board detection from EEPROM.
-- Converts input PNG to a paletted (P-mode) image with 7 colours (Spectra 6 palette) via `Image.ADAPTIVE`.
+- If the input image does not match the display resolution, `_fit_to_display()` crops oversized dimensions (center-crop) and then centers the result on a white canvas. Exact-match images pass through unchanged.
+- The fitted image is then converted to a paletted (P-mode) image with 7 colours (Spectra 6 palette) via `Image.quantize(dither=NONE)`.
 - Calls `set_image()`, `set_border(WHITE)`, `show()`.
 - `clear()` fills with white pixels and pushes to display.
 
 ### Simulator
 
-- Writes incoming PNG bytes to `{outdir}/eink-{count:04d}.png`.
+- Opens the input PNG, applies `_fit_to_display()` (crop oversized + center on white), and writes the fitted PNG to `{outdir}/eink-{count:04d}.png`.
 - `clear()` is a no-op (logs only).
 - Default outdir: `/tmp/eink-sim`.
+
+## Shutdown image
+
+On SIGTERM/SIGINT the signal handler looks for `shutdown.png` in the repository
+root (`/opt/birdnet-collage-eink/shutdown.png` on the Pi). If the file exists it
+is displayed via the same `display.show()` pipeline (7-colour quantization,
+full e-ink refresh); if not, the driver falls back to `clear()`.
+
+- **No env-var configuration required** — presence of the file is the only toggle.
+- **Expected format**: any PNG. The `_fit_to_display()` pipeline crops oversized
+  dimensions and centers the result on a white 1600×1200 canvas — no need to
+  match the resolution exactly.
+- **Custom image survives deploys**: `shutdown.png` is excluded from rsync
+  (`--exclude` in `deploy/deploy.sh`), so it is not wiped when the repo is
+  synced from the development machine.
+- **Placement**: copy the file to the Pi manually:
+  ```
+  scp my-shutdown.png $PI_USER@$PI_HOST:/opt/birdnet-collage-eink/shutdown.png
+  ```
 
 ## Configuration
 
@@ -187,9 +207,15 @@ gpiodevice>=0.1     Pimoroni GPIO chip discovery helper (buttons, Pi only)
 ### Driver pipeline
 
 ```
-PNG bytes → PIL Image.open() → convert("RGB") → quantize(palette=inky_palette, dither=NONE)
-→ inky.set_image() → inky.set_border(WHITE) → inky.show()
+PNG bytes → PIL Image.open() → convert("RGB") → _fit_to_display() →
+quantize(palette=inky_palette, dither=NONE) → inky.set_image() → inky.set_border(WHITE) → inky.show()
 ```
+
+`_fit_to_display()` crops any dimension that exceeds the display resolution
+(center-crop), then centers the result on a white canvas. Images that already
+match the display resolution pass through unchanged. This ensures that images
+of any size — including the shutdown image — always fill the display without
+distortion.
 
 Full refresh takes ~15s on the 13.3" panel. Partial refresh is not
 supported by the Spectra 6 firmware.
@@ -391,7 +417,7 @@ birdnet-collage-eink/
 │   ├── diagnostics.py       # DiagnosticsServer + state + system info collection
 │   └── display/
 │       ├── __init__.py      # factory: create_display(name)
-│       ├── base.py          # abstract BaseDisplay
+│       ├── base.py          # abstract BaseDisplay + _fit_to_display() crop/center helper
 │       ├── inky_impression.py  # real hardware driver
 │       └── simulator.py     # writes PNGs to disk
 ├── tests/

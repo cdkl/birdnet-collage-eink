@@ -21,6 +21,7 @@ rsync -az --delete \
     --exclude '*.pyc' \
     --exclude .pytest_cache \
     --exclude .env \
+    --exclude shutdown.png \
     . "$PI_USER@$PI_HOST:$REPO_DIR/"
 
 echo "==> Updating systemd unit on $PI_HOST"

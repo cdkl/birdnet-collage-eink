@@ -1,11 +1,18 @@
 import pytest
 import tempfile
 import os
-import json
+import io
+from PIL import Image
 
-SAMPLE_PNG = (
-    b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-)
+
+def _make_png(width, height, color=(255, 0, 0)):
+    img = Image.new("RGB", (width, height), color)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+SAMPLE_PNG = _make_png(1, 1)
 
 
 @pytest.fixture

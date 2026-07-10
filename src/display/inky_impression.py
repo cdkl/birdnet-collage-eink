@@ -1,7 +1,7 @@
 import io
 import logging
 from PIL import Image
-from .base import BaseDisplay
+from .base import BaseDisplay, _fit_to_display
 
 log = logging.getLogger(__name__)
 
@@ -61,9 +61,11 @@ class InkyImpression(BaseDisplay):
         self._saturation = value
 
     def show(self, png_bytes):
+        w, h = self.resolution
         img = Image.open(io.BytesIO(png_bytes))
         if img.mode != "RGB":
             img = img.convert("RGB")
+        img = _fit_to_display(img, w, h)
         palette = _blend_palette(self.saturation)
         pal_img = Image.new("P", (1, 1))
         pal_img.putpalette(palette + [0, 0, 0] * 248)

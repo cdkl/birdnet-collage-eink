@@ -75,7 +75,7 @@ def test_signal_handler(temp_outdir, monkeypatch):
     monkeypatch.setenv("SIMULATOR_OUTDIR", temp_outdir)
     monkeypatch.setenv("LOG_LEVEL", "CRITICAL")
 
-    from src.main import _handle_signal, _display, main
+    from src.main import _handle_signal
     import sys
 
     # Test that the handler doesn't crash when _display is None
@@ -83,6 +83,82 @@ def test_signal_handler(temp_outdir, monkeypatch):
         _handle_signal(signal.SIGTERM, None)
     except SystemExit:
         pass
+
+
+def test_signal_handler_shutdown_image_present(temp_outdir, monkeypatch, sample_png):
+    monkeypatch.setenv("DISPLAY_DRIVER", "simulator")
+    monkeypatch.setenv("SIMULATOR_OUTDIR", temp_outdir)
+    monkeypatch.setenv("LOG_LEVEL", "CRITICAL")
+
+    from src.main import _handle_signal
+    import src.main as main_module
+    from src.display import create_display
+
+    main_module._display = create_display("simulator", outdir=temp_outdir)
+
+    shutdown_path = os.path.join(temp_outdir, "shutdown.png")
+    monkeypatch.setattr("src.main._shutdown_image_path", lambda: shutdown_path)
+
+    with open(shutdown_path, "wb") as f:
+        f.write(sample_png)
+
+    with pytest.raises(SystemExit):
+        _handle_signal(signal.SIGTERM, None)
+
+    eink_files = [f for f in os.listdir(temp_outdir) if f.startswith("eink-")]
+    assert len(eink_files) == 1
+
+
+def test_signal_handler_shutdown_image_missing(temp_outdir, monkeypatch):
+    monkeypatch.setenv("DISPLAY_DRIVER", "simulator")
+    monkeypatch.setenv("SIMULATOR_OUTDIR", temp_outdir)
+    monkeypatch.setenv("LOG_LEVEL", "CRITICAL")
+
+    from src.main import _handle_signal
+    import src.main as main_module
+    from src.display import create_display
+
+    main_module._display = create_display("simulator", outdir=temp_outdir)
+
+    monkeypatch.setattr("src.main._shutdown_image_path", lambda: os.path.join(temp_outdir, "nonexistent.png"))
+
+    with pytest.raises(SystemExit):
+        _handle_signal(signal.SIGTERM, None)
+
+    eink_files = [f for f in os.listdir(temp_outdir) if f.startswith("eink-")]
+    assert len(eink_files) == 0
+
+
+def test_signal_handler_shutdown_image_read_error(temp_outdir, monkeypatch):
+    monkeypatch.setenv("DISPLAY_DRIVER", "simulator")
+    monkeypatch.setenv("SIMULATOR_OUTDIR", temp_outdir)
+    monkeypatch.setenv("LOG_LEVEL", "CRITICAL")
+
+    from src.main import _handle_signal
+    import src.main as main_module
+    from src.display import create_display
+
+    main_module._display = create_display("simulator", outdir=temp_outdir)
+
+    shutdown_path = os.path.join(temp_outdir, "shutdown.png")
+    monkeypatch.setattr("src.main._shutdown_image_path", lambda: shutdown_path)
+
+    with open(shutdown_path, "wb") as f:
+        f.write(b"dummy")
+
+    import builtins
+    original_open = builtins.open
+    def _failing_open(*args, **kwargs):
+        if args[0] == shutdown_path:
+            raise OSError("Permission denied")
+        return original_open(*args, **kwargs)
+    monkeypatch.setattr(builtins, "open", _failing_open)
+
+    with pytest.raises(SystemExit):
+        _handle_signal(signal.SIGTERM, None)
+
+    eink_files = [f for f in os.listdir(temp_outdir) if f.startswith("eink-")]
+    assert len(eink_files) == 0
 
 
 def test_main_imports():

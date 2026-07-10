@@ -27,6 +27,12 @@ BUTTONS_ENABLED = int(os.getenv("BUTTONS_ENABLED", "0"))
 _display = None
 _diag_state = DiagnosticsState()
 
+SHUTDOWN_IMAGE = "shutdown.png"
+
+
+def _shutdown_image_path():
+    return os.path.join(os.path.dirname(__file__), "..", SHUTDOWN_IMAGE)
+
 
 def _save_diagnostic_original(png_bytes, cache_dir):
     path = os.path.join(cache_dir, "last-original.png")
@@ -51,7 +57,17 @@ def _save_diagnostic_quantized(display, cache_dir):
 def _handle_signal(signum, frame):
     log.info("Received signal %d, shutting down...", signum)
     if _display is not None:
-        _display.clear()
+        path = _shutdown_image_path()
+        if os.path.isfile(path):
+            try:
+                with open(path, "rb") as f:
+                    _display.show(f.read())
+                log.info("Shutdown image displayed")
+            except Exception as e:
+                log.warning("Failed to display shutdown image: %s", e)
+                _display.clear()
+        else:
+            _display.clear()
     sys.exit(0)
 
 
