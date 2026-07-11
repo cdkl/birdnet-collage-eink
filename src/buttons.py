@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 
 log = logging.getLogger(__name__)
 
@@ -52,9 +53,17 @@ class ButtonMonitor:
 
         import datetime as _dt
 
+        _DEBOUNCE_S = 0.2
+        _last_event = {}
+
         while self._running:
             if request.wait_edge_events(timeout=_dt.timedelta(seconds=1)):
                 for event in request.read_edge_events():
+                    now = time.monotonic()
+                    last = _last_event.get(event.line_offset, 0.0)
+                    if now - last < _DEBOUNCE_S:
+                        continue
+                    _last_event[event.line_offset] = now
                     idx = offsets.index(event.line_offset)
                     label = BUTTON_LABELS[idx]
                     self._handle(label)

@@ -70,9 +70,13 @@ class InkyImpression(BaseDisplay):
         pal_img = Image.new("P", (1, 1))
         pal_img.putpalette(palette + [0, 0, 0] * 248)
         img = img.quantize(palette=pal_img, dither=Image.Dither.NONE)
-        self._inky.set_image(img)
-        self._inky.set_border(self._inky.WHITE)
-        self._inky.show()
+        try:
+            self._inky.set_image(img)
+            self._inky.set_border(self._inky.WHITE)
+            self._inky.show()
+        except Exception:
+            log.exception("SPI write failed during show()")
+            return
         log.info("Inky Impression updated (%s)", self._inky.resolution)
 
         buf = io.BytesIO()
@@ -82,7 +86,11 @@ class InkyImpression(BaseDisplay):
     def clear(self):
         w, h = self.resolution
         blank = Image.new("P", (w, h), 0)
-        self._inky.set_image(blank)
-        self._inky.set_border(self._inky.WHITE)
-        self._inky.show()
+        try:
+            self._inky.set_image(blank)
+            self._inky.set_border(self._inky.WHITE)
+            self._inky.show()
+        except Exception:
+            log.exception("SPI write failed during clear()")
+            return
         log.info("Inky Impression cleared")
