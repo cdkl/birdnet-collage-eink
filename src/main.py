@@ -6,6 +6,7 @@ import logging
 import threading
 
 from .display import create_display
+from .display.base import overlay_timestamp
 from .fetcher import CollageFetcher
 from .diagnostics import DiagnosticsState, DiagnosticsServer
 
@@ -103,6 +104,8 @@ def _poll_loop(display, fetcher, diag_state, cache_dir, button_state=None):
         if png is not None:
             _save_diagnostic_original(png, cache_dir)
             diag_state.last_original_path = os.path.join(cache_dir, "last-original.png")
+
+            png = overlay_timestamp(png)
 
             display.show(png)
 

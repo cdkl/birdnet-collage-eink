@@ -37,6 +37,10 @@ birdnet-collage (server)        Raspberry Pi Zero (this app)
 │  200 image/png       │  200   │  └──────┬───────────┘    │
 │  + ETag header       │──────►│         │                 │
 └──────────────────────┘        │  ┌──────▼───────────┐    │
+                                │  │ overlay_timestamp │    │
+                                │  │  compositing step│    │
+                                │  └──────┬───────────┘    │
+                                │  ┌──────▼───────────┐    │
                                 │  │ Display driver   │    │
                                 │  │  BaseDisplay     │    │
                                 │  │  ├─ InkyImpression│    │
@@ -81,7 +85,7 @@ birdnet-collage (server)        Raspberry Pi Zero (this app)
 | systemd `Restart=on-failure` | Pi Zero runs headless; service must self-heal (WiFi drop, server restart, etc.) |
 | `stdout` logging → journald | Zero-config logging; no log files to rotate |
 | Graceful shutdown via signal handler | SIGTERM/SIGINT → show `shutdown.png` (if present) → `display.clear()` → exit. Lets users place a custom goodbye image at the repo root. No env-var configuration needed |
-| `from inky.auto import auto` | Inky auto-detects the display from EEPROM — no manual model selection |
+| Timestamp overlay composited client-side | A "last refreshed" timestamp (`HH:MM`) is drawn in the bottom-right corner of every displayed image. Compositing is done in the main poll loop — before quantization — so it works identically for both drivers. The server's raw PNG is preserved as `last-original.png` for diagnostics. Uses the bundled `DejaVuSans.ttf` for consistent appearance across machines
 | Inky driver installed into `~/.virtualenvs/pimoroni/` | Pimoroni's recommended install path; systemd `ExecStart` points to this venv's python3 |
 | SPI + I2C + `dtoverlay=spi0-0cs` required | Inky Impression uses SPI for data, I2C for EEPROM detection. Chip-select overlay needed to avoid kernel conflict |
 
@@ -102,6 +106,7 @@ class BaseDisplay(abc.ABC):
 ### InkyImpression
 
 - Uses `inky.auto` for automatic board detection from EEPROM.
+- The input image arrives with a "last refreshed" timestamp already composited in the bottom-right corner (done in `_poll_loop()` via `overlay_timestamp()` before calling `show()`).
 - If the input image does not match the display resolution, `_fit_to_display()` crops oversized dimensions (center-crop) and then centers the result on a white canvas. Exact-match images pass through unchanged.
 - The fitted image is then converted to a paletted (P-mode) image with 7 colours (Spectra 6 palette) via `Image.quantize(dither=NONE)`.
 - Calls `set_image()`, `set_border(WHITE)`, `show()`.
@@ -207,9 +212,17 @@ gpiodevice>=0.1     Pimoroni GPIO chip discovery helper (buttons, Pi only)
 ### Driver pipeline
 
 ```
-PNG bytes → PIL Image.open() → convert("RGB") → _fit_to_display() →
-quantize(palette=inky_palette, dither=NONE) → inky.set_image() → inky.set_border(WHITE) → inky.show()
+PNG bytes → overlay_timestamp() → PIL Image.open() → convert("RGB") →
+_fit_to_display() → quantize(palette=inky_palette, dither=NONE) →
+inky.set_image() → inky.set_border(WHITE) → inky.show()
 ```
+
+`overlay_timestamp()` (defined in `base.py`) composites the current time
+(`HH:MM`) into the bottom-right corner of the image before it reaches the
+display driver. It uses a dark rounded-rect pill with white text, sized to fit
+the DejaVuSans font bundled in `assets/`. The compositing happens in the main
+poll loop, so `last-original.png` (diagnostics) preserves the server's raw
+output while the timestamped version is what gets pushed to the panel.
 
 `_fit_to_display()` crops any dimension that exceeds the display resolution
 (center-crop), then centers the result on a white canvas. Images that already
@@ -400,13 +413,15 @@ Each time `display.show()` succeeds, two files are written (overwritten) to
 
 | File | Content |
 |---|---|
-| `last-original.png` | Raw PNG bytes as received from the collage server |
-| `last-quantized.png` | PNG after 7-colour quantization (pixel-exact match to what InkyImpression pushes to hardware) |
+| `last-original.png` | Raw PNG bytes as received from the collage server (no timestamp overlay) |
+| `last-quantized.png` | PNG after timestamp overlay and 7-colour quantization (pixel-exact match to what InkyImpression pushes to hardware) |
 
 ## Repository structure
 
 ```
 birdnet-collage-eink/
+├── assets/
+│   └── DejaVuSans.ttf          # bundled font for timestamp overlay
 ├── src/
 │   ├── __init__.py
 │   ├── __version__           # version string (0.1.0)

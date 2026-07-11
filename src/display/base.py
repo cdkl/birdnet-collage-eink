@@ -1,6 +1,66 @@
 import abc
+import datetime
 import io
-from PIL import Image
+import logging
+import os
+from PIL import Image, ImageDraw, ImageFont
+
+log = logging.getLogger(__name__)
+
+_BUNDLED_FONT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "assets", "DejaVuSans.ttf",
+)
+_FONT_CACHE = {}
+
+
+def _get_overlay_font(size=20):
+    key = (size,)
+    if key in _FONT_CACHE:
+        return _FONT_CACHE[key]
+    font = None
+    if os.path.isfile(_BUNDLED_FONT):
+        try:
+            font = ImageFont.truetype(_BUNDLED_FONT, size)
+        except (OSError, IOError):
+            pass
+    if font is None:
+        font = ImageFont.load_default()
+    _FONT_CACHE[key] = font
+    return font
+
+
+def overlay_timestamp(png_bytes):
+    img = Image.open(io.BytesIO(png_bytes))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    draw = ImageDraw.Draw(img)
+    font = _get_overlay_font(20)
+
+    text = datetime.datetime.now().strftime("%-d %b %H:%M")
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+
+    margin = 16
+    pad = 6
+    pill_w = tw + pad * 2
+    pill_h = th + pad * 2
+    pill_x = img.width - pill_w - margin
+    pill_y = img.height - pill_h - margin
+
+    draw.rounded_rectangle(
+        [(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
+        radius=4,
+        fill=(255, 255, 255),
+    )
+    draw.text((pill_x + pad, pill_y + pad), text, fill=(0, 0, 0), font=font)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _fit_to_display(img, target_w, target_h):
