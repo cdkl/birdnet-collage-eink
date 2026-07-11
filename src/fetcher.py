@@ -27,14 +27,14 @@ class CollageFetcher:
         except OSError:
             log.warning("Failed to save ETag to %s", self._etag_file)
 
-    def fetch(self, width=1600, height=1200, hours=24, refresh=0):
+    def fetch(self, width=1600, height=1200, hours=24, refresh=0, skip_etag=False):
         import requests
 
         url = f"{self._base_url}/api/eink?w={width}&h={height}&hours={hours}"
         if refresh:
             url += "&refresh=1"
         headers = {}
-        etag = self._load_etag()
+        etag = None if skip_etag else self._load_etag()
         if etag:
             headers["If-None-Match"] = f'"{etag}"'
 

@@ -73,6 +73,7 @@ def _handle_signal(signum, frame):
 
 
 def _poll_loop(display, fetcher, diag_state, cache_dir, button_state=None):
+    first_poll = True
     while True:
         if button_state is not None:
             if button_state["clear_requested"]:
@@ -92,7 +93,9 @@ def _poll_loop(display, fetcher, diag_state, cache_dir, button_state=None):
             height=DISPLAY_HEIGHT,
             hours=LOOKBACK_HOURS,
             refresh=1 if force else 0,
+            skip_etag=first_poll,
         )
+        first_poll = False
         now = time.time()
         diag_state.last_fetch_time = now
         diag_state.last_fetch_status = fetcher.last_status_code
